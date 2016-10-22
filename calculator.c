@@ -43,6 +43,7 @@
     setval - set value of variable x (used when graphing mode is disabled)
     graph - enable graphing mode
     nograph - disable graphing mode
+    color - set graphing colors (or, if every color is 0, use the default)
     exit - end the program
 
   As an example, you can try plotting the batman curve:
@@ -155,13 +156,16 @@ typedef struct
     uint8_t *data;
 } Image;
 
-int graphColors[][3] = {{255,   0, 255},
-                         {  0, 255, 255},
-                         {255, 255,   0},
-                         {120, 100, 200},
-                         {255,   0,   0},
-                         {  0, 255,   0},
-                         {  0,   0, 255}};
+int graphColors[][3] = {{ 57, 106, 177},
+                        {218, 124,  48},
+                        { 62, 150,  81},
+                        {204,  37,  41},
+                        {107,  76, 154},
+                        {255,   0, 255},
+                        {  0, 255, 255},
+                        {255,   0,   0},
+                        {  0, 255,   0},
+                        {  0,   0, 255}};
 
 Associativity getAssociativity(TokenType type)
 {
