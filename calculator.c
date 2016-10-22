@@ -130,6 +130,8 @@ typedef struct
     bool graphing;
     double minX, maxX;
     double minY, maxY;
+    bool definedGraphColor;
+    int graphColor[3];
     bool isDeg; // TODO(nox): Implement this!
 } ExpressionParserOptions;
 
@@ -144,6 +146,22 @@ typedef struct
     int numExpressions;
     TokenQueue queues[15];
 } ExpressionsResult;
+
+typedef struct
+{
+    int width;
+    int height;
+    int stride;
+    uint8_t *data;
+} Image;
+
+int graphColors[][3] = {{255,   0, 255},
+                         {  0, 255, 255},
+                         {255, 255,   0},
+                         {120, 100, 200},
+                         {255,   0,   0},
+                         {  0, 255,   0},
+                         {  0,   0, 255}};
 
 Associativity getAssociativity(TokenType type)
 {
@@ -218,11 +236,25 @@ bool previousIsNumber(Token prevToken)
             prevToken.type == Token_Identifier);
 }
 
-void readNumber(char *prompt, double *number)
+void readInteger(char *prompt, int *number)
 {
     for(;;)
     {
-        char buffer[1<<10] = {};
+        char buffer[1<<10] = {0};
+        printf("%s", prompt);
+        fgets(buffer, arrayCount(buffer), stdin);
+        if(sscanf(buffer, "%d", number) == 1)
+        {
+            break;
+        }
+    }
+}
+
+void readReal(char *prompt, double *number)
+{
+    for(;;)
+    {
+        char buffer[1<<10] = {0};
         printf("%s", prompt);
         fgets(buffer, arrayCount(buffer), stdin);
         if(sscanf(buffer, "%lf", number) == 1)
@@ -239,7 +271,7 @@ void tokenTextToBuffer(Token token, char output[])
 
     for(int i = 0; i < token.size; ++i)
     {
-        output[i] = tolower(output[i]);
+        output[i] = (char)tolower(output[i]);
     }
 }
 
@@ -284,7 +316,7 @@ Token parseToken(Tokenizer *tokenizer, ExpressionParserOptions *options)
 {
     eatWhitespace(tokenizer);
 
-    Token token = {};
+    Token token = {0};
     token.type = Token_Unknown;
     token.text = tokenizer->at;
     token.size = 1;
@@ -324,7 +356,7 @@ Token parseToken(Tokenizer *tokenizer, ExpressionParserOptions *options)
                 {
                     ++tokenizer->at;
                 }
-                token.size = tokenizer->at - token.text;
+                token.size = (int)(tokenizer->at - token.text);
                 sscanf(token.text, "%lf", &token.number);
             }
             else if(isAlpha(c))
@@ -334,7 +366,7 @@ Token parseToken(Tokenizer *tokenizer, ExpressionParserOptions *options)
                 {
                     ++tokenizer->at;
                 }
-                token.size = tokenizer->at - token.text;
+                token.size = (int)(tokenizer->at - token.text);
 
                 // NOTE(nox): Check for special keywords
                 char name[1<<10];
@@ -365,7 +397,7 @@ Token parseToken(Tokenizer *tokenizer, ExpressionParserOptions *options)
                 else if(strcmp(name, "setval") == 0)
                 {
                     token.type = Token_Keyword;
-                    readNumber("Value for x: ", &options->variableValue);
+                    readReal("Value for x: ", &options->variableValue);
                 }
                 else if(strcmp(name, "nograph") == 0)
                 {
@@ -376,15 +408,44 @@ Token parseToken(Tokenizer *tokenizer, ExpressionParserOptions *options)
                 {
                     token.type = Token_Keyword;
                     options->graphing = 1;
-                    readNumber("Minimum x: ", &options->minX);
-                    readNumber("Maximum x: ", &options->maxX);
-                    readNumber("Minimum y: ", &options->minY);
-                    readNumber("Maximum y: ", &options->maxY);
+                    readReal("Minimum x: ", &options->minX);
+                    readReal("Maximum x: ", &options->maxX);
+                    readReal("Minimum y: ", &options->minY);
+                    readReal("Maximum y: ", &options->maxY);
 
                     if(options->minX >= options->maxX || options->minY >= options->maxY)
                     {
                         options->graphing = 0;
                         puts("Graphing function arguments are not correct.");
+                    }
+                }
+                else if(strcmp(name, "color") == 0)
+                {
+                    token.type = Token_Keyword;
+                    options->definedGraphColor = 1;
+
+                    readInteger("Red (0-255): ", &options->graphColor[0]);
+                    readInteger("Green (0-255): ", &options->graphColor[1]);
+                    readInteger("Blue (0-255): ", &options->graphColor[2]);
+
+                    if(options->graphColor[0] < 0 || options->graphColor[0] > 255 ||
+                       options->graphColor[1] < 0 || options->graphColor[1] > 255 ||
+                       options->graphColor[2] < 0 || options->graphColor[2] > 255)
+                    {
+                        options->definedGraphColor = 0;
+                        puts("Invalid graph colors.");
+                    }
+                    else if(options->graphColor[0] == 0 &&
+                            options->graphColor[1] == 0 &&
+                            options->graphColor[2] == 0)
+                    {
+                        options->definedGraphColor = 0;
+                        puts("User defined graph color disabled.");
+                    }
+                    else
+                    {
+                        options->definedGraphColor = 1;
+                        puts("User defined graph color enabled.");
                     }
                 }
             }
@@ -428,7 +489,7 @@ bool addToken(Token token, ExpressionsResult *result, int *stackSize, Token stac
         {
             if(previousIsNumber(tokenizer->prevToken))
             {
-                Token implicitToken = {};
+                Token implicitToken = {0};
                 implicitToken.type = Token_Star;
                 addToken(implicitToken, result, stackSize, stack, tokenizer,
                          parsing, error);
@@ -442,7 +503,7 @@ bool addToken(Token token, ExpressionsResult *result, int *stackSize, Token stac
         {
             if(previousIsNumber(tokenizer->prevToken))
             {
-                Token implicitToken = {};
+                Token implicitToken = {0};
                 implicitToken.type = Token_Star;
                 addToken(implicitToken, result, stackSize, stack, tokenizer,
                          parsing, error);
@@ -488,14 +549,11 @@ bool addToken(Token token, ExpressionsResult *result, int *stackSize, Token stac
         case Token_Comma:
         {
             bool found = 0;
-            while((*stackSize))
+            int tempSize = *stackSize;
+            while(tempSize)
             {
-                Token operator = stack[--(*stackSize)];
-                if(operator.type != Token_OpenParen)
-                {
-                    output->queue[output->size++] = operator;
-                }
-                else
+                Token *operator = stack + --tempSize;
+                if(operator->type == Token_OpenParen)
                 {
                     found = 1;
                     break;
@@ -590,7 +648,7 @@ bool parseExpression(char buffer[], ExpressionsResult *result, ExpressionParserO
 double solveParsedExpression(TokenQueue *parsed, ExpressionParserOptions *options)
 {
     int workingStackSize = 0;
-    double workingStack[1<<10] = {};
+    double workingStack[1<<10] = {0};
     bool error = 0;
     for(int queueIndex = 0; queueIndex < parsed->size; ++queueIndex)
     {
@@ -668,7 +726,15 @@ double solveParsedExpression(TokenQueue *parsed, ExpressionParserOptions *option
 
                 double number2 = workingStack[--workingStackSize];
                 double number1 = workingStack[--workingStackSize];
-                workingStack[workingStackSize++] = number1/number2;
+
+                if(number2 == 0.0)
+                {
+                    workingStack[workingStackSize++] = NAN;
+                }
+                else
+                {
+                    workingStack[workingStackSize++] = number1/number2;
+                }
             } break;
 
             case Token_Circumflex:
@@ -695,6 +761,7 @@ double solveParsedExpression(TokenQueue *parsed, ExpressionParserOptions *option
                         tokenTextToBuffer(*nextToken, name);
                         printf("Identifier %s with %d arguments is not defined.\n",
                                name, workingStackSize);
+                        error = 1;
                     }
                     else
                     {
@@ -747,16 +814,20 @@ double solveParsedExpression(TokenQueue *parsed, ExpressionParserOptions *option
                                     tokenTextToBuffer(*nextToken, name);
                                     printf("Identifier %s with %d arguments is not defined.\n",
                                            name, workingStackSize);
-                                }
-                                double number2 = workingStack[--workingStackSize];
-                                double number1 = workingStack[--workingStackSize];
-                                if(number1 > 0 && number2 > 0 && number1 != 1)
-                                {
-                                    workingStack[workingStackSize++] = log(number2)/log(number1);
+                                    error = 1;
                                 }
                                 else
                                 {
-                                    workingStack[workingStackSize++] = NAN;
+                                    double number2 = workingStack[--workingStackSize];
+                                    double number1 = workingStack[--workingStackSize];
+                                    if(number1 > 0 && number2 > 0 && number1 != 1)
+                                    {
+                                        workingStack[workingStackSize++] = log(number2)/log(number1);
+                                    }
+                                    else
+                                    {
+                                        workingStack[workingStackSize++] = NAN;
+                                    }
                                 }
                             } break;
 
@@ -793,54 +864,54 @@ double solveParsedExpression(TokenQueue *parsed, ExpressionParserOptions *option
     }
 }
 
-void drawLine(uint8_t *image, int stride, int imageWidth, int imageHeight,
-              int x1, int y1, int x2, int y2,
-              uint8_t r, uint8_t g, uint8_t b)
+void drawLine(Image *image, int x0, int y1, int x1, int y2, uint8_t r, uint8_t g, uint8_t b)
 {
     bool steep = 0;
-    if(abs(x1 - x2) < abs(y1-y2))
+    if(abs(x0 - x1) < abs(y1-y2))
     {
         steep = 1;
 
-        int temp = x1;
-        x1 = y1;
+        int temp = x0;
+        x0 = y1;
         y1 = temp;
 
-        temp = x2;
-        x2 = y2;
+        temp = x1;
+        x1 = y2;
         y2 = temp;
     }
 
-    if(x1 > x2)
+    if(x0 > x1)
     {
-        int temp = x1;
-        x1 = x2;
-        x2 = temp;
+        int temp = x0;
+        x0 = x1;
+        x1 = temp;
 
         temp = y1;
         y1 = y2;
         y2 = temp;
     }
 
-    int deltaX = x2-x1;
+    int deltaX = x1-x0;
     int deltaY = y2-y1;
-    int error2 = 0.0;
+    int error2 = 0;
     int deltaError2 = abs(deltaY)*2;
 
     int y = y1;
-    for(int x = x1; x <= x2; ++x)
+    for(int x = x0; x <= x1; ++x)
     {
-        if(!steep && x >= 0 && x < imageWidth && y >= 0 && y < imageHeight)
+        if(!steep && x >= 0 && x < image->width && y >= 0 && y < image->height)
         {
-            (image + y*stride)[x*3] = r;
-            (image + y*stride)[x*3+1] = g;
-            (image + y*stride)[x*3+2] = b;
+            uint8_t *pixel = image->data + y*image->stride + x*3;
+            pixel[0] = r;
+            pixel[1] = g;
+            pixel[2] = b;
         }
-        else if(steep && y >= 0 && y < imageWidth && x >= 0 && x < imageHeight)
+        else if(steep && y >= 0 && y < image->width && x >= 0 && x < image->height)
         {
-            (image + x*stride)[y*3] = r;
-            (image + x*stride)[y*3+1] = g;
-            (image + x*stride)[y*3+2] = b;
+            uint8_t *pixel = image->data + x*image->stride + y*3;
+            pixel[0] = r;
+            pixel[1] = g;
+            pixel[2] = b;
         }
 
         error2 += deltaError2;
@@ -852,9 +923,45 @@ void drawLine(uint8_t *image, int stride, int imageWidth, int imageHeight,
     }
 }
 
+int getPosOnImage(double target, double min, double max, int dimension, bool inverse)
+{
+    double value = ((target-min) / (max-min)) * (dimension-1);
+    if(inverse)
+    {
+        value = (dimension-1) - value;
+    }
+
+    int result = (int)round(value);
+
+    return result;
+}
+
+bool pointIsVisible(Image *image, int x, int y)
+{
+    return (x >= 0 && x < image->width &&
+            y >= 0 && y < image->height);
+}
+
+bool pointIsInThreshold(Image *image, int x, int y)
+{
+    int threshold = 10000;
+    return (x >= -threshold && x < image->width + threshold &&
+            y >= -threshold && y < image->height + threshold);
+}
+
+void getNextGraphColor(int *colorIndex)
+{
+    int numberOfColors = arrayCount(graphColors);
+    ++(*colorIndex);
+    if(*colorIndex < 0 || *colorIndex >= numberOfColors)
+    {
+        *colorIndex = 0;
+    }
+}
+
 int main()
 {
-    ExpressionParserOptions options = {};
+    ExpressionParserOptions options = {0};
 
     for(;;)
     {
@@ -863,11 +970,11 @@ int main()
             return 0;
         }
 
-        char buffer[1<<12] = {};
+        char buffer[1<<12] = {0};
         printf("Insert the expression: ");
         fgets(buffer, arrayCount(buffer), stdin);
 
-        ExpressionsResult result = {};
+        ExpressionsResult result = {0};
         if(!parseExpression(buffer, &result, &options))
         {
             continue;
@@ -875,30 +982,37 @@ int main()
 
         if(options.graphing)
         {
-            // TODO(nox): Clean this up
-            int imageWidth = 1024;
-            int imageHeight = 768;
-            int stride = 3*imageWidth;
-            uint8_t *image = (uint8_t *)calloc(imageHeight*stride, 1);
+            Image image;
+            image.width = 1025;
+            image.height = 769;
+            image.stride = 3*image.width;
+            image.data = (uint8_t *)calloc(image.height*image.stride, 1);
 
-            int originX = ((-options.minX)/(options.maxX-options.minX) *
-                           imageWidth);
-            int originY = imageHeight - ((-options.minY)/(options.maxY-options.minY) *
-                                         imageHeight) - 1;
+            // NOTE(nox): Draw axes
+            int originX = getPosOnImage(0, options.minX, options.maxX, image.width, 0);
+            int originY = getPosOnImage(0, options.minY, options.maxY, image.height, 1);
+            drawLine(&image, 0, originY, image.width-1, originY, 255, 255, 255);
+            drawLine(&image, originX, 0, originX, image.height-1, 255, 255, 255);
 
-            drawLine(image, stride, imageWidth, imageHeight,
-                     0, originY, imageWidth-1, originY,
-                     255, 255, 255);
-            drawLine(image, stride, imageWidth, imageHeight,
-                     originX, 0, originX, imageHeight-1,
-                     255, 255, 255);
+            double increment = (options.maxX - options.minX) / (image.width - 1);
 
-            double increment = (options.maxX - options.minX) / imageWidth;
-
+            int colorIndex = -1;
             for(int i = 0; i < result.numExpressions; ++i)
             {
-                double prevX = NAN;
-                double prevY = NAN;
+                int *colors;
+                if(!options.definedGraphColor)
+                {
+                    getNextGraphColor(&colorIndex);
+                    colors = graphColors[colorIndex];
+                }
+                else
+                {
+                    colors = options.graphColor;
+                }
+
+                double prevX = NAN, prevY = NAN;
+                int x0 = 0, y0 = 0;
+
                 for(options.variableValue = options.minX; options.variableValue <= options.maxX;
                     options.variableValue += increment)
                 {
@@ -906,14 +1020,15 @@ int main()
                     double y = solveParsedExpression(result.queues+i, &options);
 
                     // NOTE(nox): Hole filler
-                    if(prevY == prevY && y != y)
+                    if(prevY == prevY && y != y && prevX == prevX)
                     {
                         double temp = options.variableValue;
 
-                        options.variableValue -= increment;
-                        for(;;)
+                        options.variableValue = prevX;
+                        double goal = options.variableValue + increment;
+                        while(options.variableValue < goal)
                         {
-                            options.variableValue += increment*0.005;
+                            options.variableValue += increment*0.001;
                             double newY = solveParsedExpression(result.queues+i, &options);
                             if(newY != newY)
                             {
@@ -928,14 +1043,14 @@ int main()
 
                         options.variableValue = temp;
                     }
-                    else if(prevY != prevY && y == y)
+                    if(prevY != prevY && y == y && prevX == prevX)
                     {
                         double temp = options.variableValue;
 
-                        double goal = options.variableValue - increment;
+                        double goal = prevX;
                         while(options.variableValue > goal)
                         {
-                            options.variableValue -= increment*0.005;
+                            options.variableValue -= increment*0.001;
                             double newY = solveParsedExpression(result.queues+i, &options);
                             if(newY != newY)
                             {
@@ -948,25 +1063,36 @@ int main()
                             }
                         }
 
-                        prevX = ((prevX-options.minX) / (options.maxX-options.minX) *
-                                 (imageWidth-1));
-                        prevY = (imageHeight-1) - ((prevY-options.minY) /
-                                               (options.maxY-options.minY) * (imageHeight-1));
+                        if(prevY == prevY)
+                        {
+                            x0 = getPosOnImage(prevX, options.minX, options.maxX,
+                                                      image.width, 0);
+                            y0 = getPosOnImage(prevY, options.minY, options.maxY,
+                                                      image.height, 1);
+                        }
 
                         options.variableValue = temp;
                     }
 
-                    x = ((x-options.minX) / (options.maxX-options.minX) *
-                         (imageWidth-1));
-                    y = (imageHeight-1) - ((y-options.minY) /
-                                       (options.maxY-options.minY) * (imageHeight-1));
+                    int x1 = getPosOnImage(x, options.minX, options.maxX, image.width, 0);
+                    int y1 = getPosOnImage(y, options.minY, options.maxY, image.height, 1);
 
                     if(y == y && prevY == prevY &&
-                       x >= 0 && x < imageWidth && y >= 0 && y < imageHeight)
+                       pointIsInThreshold(&image, x0, y0) && pointIsInThreshold(&image, x1, y1))
                     {
-                        drawLine(image, stride, imageWidth, imageHeight,
-                                 (int)round(prevX), (int)round(prevY), (int)round(x), (int)round(y),
-                                 255, 0, 255);
+                        if(pointIsVisible(&image, x0, y0) || pointIsVisible(&image, x1, y1))
+                        {
+                            drawLine(&image, x0, y0, x1, y1, (uint8_t)colors[0], (uint8_t)colors[1],
+                                     (uint8_t)colors[2]);
+                        }
+
+                        x0 = x1;
+                        y0 = y1;
+                    }
+                    else if(y == y)
+                    {
+                        x0 = getPosOnImage(x, options.minX, options.maxX, image.width, 0);
+                        y0 = getPosOnImage(y, options.minY, options.maxY, image.height, 1);
                     }
 
                     prevX = x;
@@ -974,8 +1100,8 @@ int main()
                 }
             }
 
-            stbi_write_png("output.png", imageWidth, imageHeight, 3, image, stride);
-            free(image);
+            stbi_write_png("output.png", image.width, image.height, 3, image.data, image.stride);
+            free(image.data);
         }
         else
         {
@@ -985,6 +1111,4 @@ int main()
             }
         }
     }
-
-    return 0;
 }
