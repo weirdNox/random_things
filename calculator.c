@@ -138,8 +138,11 @@ typedef struct
 
 typedef struct
 {
+    char *text;
+    int textLength;
     int size;
     Token queue[1<<9];
+    int failed;
 } TokenQueue;
 
 typedef struct
@@ -275,7 +278,7 @@ void tokenTextToBuffer(Token token, char output[])
 
     for(int i = 0; i < token.size; ++i)
     {
-        output[i] = (char)tolower(output[i]);
+        output[i] = (char)tolower(token.text[i]);
     }
 }
 
@@ -459,30 +462,34 @@ Token parseToken(Tokenizer *tokenizer, ExpressionParserOptions *options)
     return token;
 }
 
-void endExpression(TokenQueue *output, int *stackSize, Token stack[], bool *error)
+void endExpression(TokenQueue *output, int *stackSize, Token stack[],
+                   char *lastChar)
 {
     while(*stackSize)
     {
         Token newToken = stack[--(*stackSize)];
         if(newToken.type == Token_OpenParen)
         {
-            *error = 1;
+            output->failed = 1;
+            *stackSize = 0;
             break;
         }
 
         output->queue[output->size++] = newToken;
     }
+
+    output->textLength = lastChar - output->text;
 }
 
 bool addToken(Token token, ExpressionsResult *result, int *stackSize, Token stack[],
-              Tokenizer *tokenizer, bool *parsing, bool *error)
+              Tokenizer *tokenizer, bool *parsing)
 {
     TokenQueue *output = result->queues + result->numExpressions - 1;
     switch(token.type)
     {
         case Token_EOF:
         {
-            endExpression(output, stackSize, stack, error);
+            endExpression(output, stackSize, stack, tokenizer->at - token.size);
             *parsing = 0;
         } break;
 
@@ -496,7 +503,7 @@ bool addToken(Token token, ExpressionsResult *result, int *stackSize, Token stac
                 Token implicitToken = {0};
                 implicitToken.type = Token_Star;
                 addToken(implicitToken, result, stackSize, stack, tokenizer,
-                         parsing, error);
+                         parsing);
             }
 
             output->queue[output->size++] = token;
@@ -510,7 +517,7 @@ bool addToken(Token token, ExpressionsResult *result, int *stackSize, Token stac
                 Token implicitToken = {0};
                 implicitToken.type = Token_Star;
                 addToken(implicitToken, result, stackSize, stack, tokenizer,
-                         parsing, error);
+                         parsing);
             }
 
             stack[(*stackSize)++] = token;
@@ -535,8 +542,7 @@ bool addToken(Token token, ExpressionsResult *result, int *stackSize, Token stac
 
             if(!found)
             {
-                *parsing = 0;
-                *error = 1;
+                output->failed = 1;
             }
 
             if(*stackSize)
@@ -567,8 +573,10 @@ bool addToken(Token token, ExpressionsResult *result, int *stackSize, Token stac
             if(!found)
             {
                 // NOTE(nox): New expression
-                endExpression(output, stackSize, stack, error);
-                ++result->numExpressions;
+                endExpression(output, stackSize, stack, tokenizer->at - token.size);
+
+                eatWhitespace(tokenizer);
+                result->queues[result->numExpressions++].text = tokenizer->at;
             }
         } break;
 
@@ -616,8 +624,10 @@ bool parseExpression(char buffer[], ExpressionsResult *result, ExpressionParserO
 
     result->numExpressions = 1;
 
+    eatWhitespace(&tokenizer);
+    result->queues[0].text = tokenizer.at;
+
     bool parsing = 1;
-    bool error = 0;
     while(parsing)
     {
         // TODO(nox): We are currently not checking if the number of tokens is bigger than
@@ -627,12 +637,11 @@ bool parseExpression(char buffer[], ExpressionsResult *result, ExpressionParserO
         if(tokenizer.prevToken.type == Token_Function &&
            token.type != Token_OpenParen)
         {
-            error = 1;
-            break;
+            result->queues[result->numExpressions-1].failed = 1;
         }
 
         if(!addToken(token, result, &operatorStackSize, operatorStack, &tokenizer,
-                     &parsing, &error))
+                     &parsing))
         {
             return 0;
         }
@@ -640,10 +649,15 @@ bool parseExpression(char buffer[], ExpressionsResult *result, ExpressionParserO
         tokenizer.prevToken = token;
     }
 
-    if(error)
+    for(int i = 0; i < result->numExpressions; ++i)
     {
-        puts("Malformed expression.");
-        return 0;
+        TokenQueue *queue = result->queues + i;
+        if(queue->failed)
+        {
+            char buffer[1<<8] = {0};
+            memcpy(buffer, queue->text, queue->textLength);
+            printf("Malformed expression: %s\n", buffer);
+        }
     }
 
     return 1;
@@ -651,9 +665,13 @@ bool parseExpression(char buffer[], ExpressionsResult *result, ExpressionParserO
 
 double solveParsedExpression(TokenQueue *parsed, ExpressionParserOptions *options)
 {
+    if(parsed->failed)
+    {
+        return NAN;
+    }
+
     int workingStackSize = 0;
     double workingStack[1<<10] = {0};
-    bool error = 0;
     for(int queueIndex = 0; queueIndex < parsed->size; ++queueIndex)
     {
         Token *nextToken = parsed->queue + queueIndex;
@@ -673,7 +691,7 @@ double solveParsedExpression(TokenQueue *parsed, ExpressionParserOptions *option
             {
                 if(workingStackSize < 2)
                 {
-                    error = 1;
+                    parsed->failed = 1;
                     break;
                 }
 
@@ -686,7 +704,7 @@ double solveParsedExpression(TokenQueue *parsed, ExpressionParserOptions *option
             {
                 if(workingStackSize < 1)
                 {
-                    error = 1;
+                    parsed->failed = 1;
                     break;
                 }
 
@@ -698,7 +716,7 @@ double solveParsedExpression(TokenQueue *parsed, ExpressionParserOptions *option
             {
                 if(workingStackSize < 2)
                 {
-                    error = 1;
+                    parsed->failed = 1;
                     break;
                 }
 
@@ -711,7 +729,7 @@ double solveParsedExpression(TokenQueue *parsed, ExpressionParserOptions *option
             {
                 if(workingStackSize < 2)
                 {
-                    error = 1;
+                    parsed->failed = 1;
                     break;
                 }
 
@@ -724,7 +742,7 @@ double solveParsedExpression(TokenQueue *parsed, ExpressionParserOptions *option
             {
                 if(workingStackSize < 2)
                 {
-                    error = 1;
+                    parsed->failed = 1;
                     break;
                 }
 
@@ -745,7 +763,7 @@ double solveParsedExpression(TokenQueue *parsed, ExpressionParserOptions *option
             {
                 if(workingStackSize < 2)
                 {
-                    error = 1;
+                    parsed->failed = 1;
                     break;
                 }
 
@@ -765,7 +783,7 @@ double solveParsedExpression(TokenQueue *parsed, ExpressionParserOptions *option
                         tokenTextToBuffer(*nextToken, name);
                         printf("Identifier %s with %d arguments is not defined.\n",
                                name, workingStackSize);
-                        error = 1;
+                        parsed->failed = 1;
                     }
                     else
                     {
@@ -818,7 +836,7 @@ double solveParsedExpression(TokenQueue *parsed, ExpressionParserOptions *option
                                     tokenTextToBuffer(*nextToken, name);
                                     printf("Identifier %s with %d arguments is not defined.\n",
                                            name, workingStackSize);
-                                    error = 1;
+                                    parsed->failed = 1;
                                 }
                                 else
                                 {
@@ -852,9 +870,11 @@ double solveParsedExpression(TokenQueue *parsed, ExpressionParserOptions *option
         }
     }
 
-    if(error)
+    if(parsed->failed)
     {
-        puts("Malformed expression.");
+        char buffer[1<<8] = {0};
+        memcpy(buffer, parsed->text, parsed->textLength);
+        printf("Malformed expression: %s\n", buffer);
         return NAN;
     }
 
