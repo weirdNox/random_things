@@ -1,0 +1,17 @@
+.green {
+	background-color: #C47805 !important;
+}
+
+	.green:hover {
+		background-color: #A76603 !important;
+	}
+	
+.greenNH {
+background-color: #C47805 !important;
+}
+	
+#logo {
+	margin-top: -1em !important;
+	margin-bottom: -0.7em !important;
+}
+.ic-loading { background-image:url(../img/ic/hw/ic-loading.gif) !important; }

@@ -1,0 +1,13 @@
+.green {
+	background-color: #88290f !important;
+}
+
+	.green:hover {
+		background-color: #70220c !important;
+	}
+	
+.greenNH {
+background-color: #88290f !important;
+}
+
+.ic-loading { background-image:url(../img/themes/xmas/ic-loading.gif) !important; }
