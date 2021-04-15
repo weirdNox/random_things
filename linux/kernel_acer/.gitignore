@@ -1,0 +1,6 @@
+linux/
+pkg/
+src/
+PKGBUILD
+config
+linux.pkg.tar.zst

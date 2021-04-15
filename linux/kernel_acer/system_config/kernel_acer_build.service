@@ -1,0 +1,8 @@
+# Kernel build unit, must be a USER service (~/.config/systemd/user/...)
+
+[Unit]
+Description=Acer kernel compilation
+
+[Service]
+Type=simple
+ExecStart=%h/build/kernel_acer/checkUpdate.sh

@@ -1,0 +1,14 @@
+# Kernel build timer, must be a USER service (~/.config/systemd/user/...)
+#
+# This should be enabled with `systemctl --user enable --now kernel_acer_build.timer`
+# Also, you should enable user lingering `loginctl enable-linger` (for the current user)
+
+[Unit]
+Description=Fetch kernel updates daily
+
+[Timer]
+OnActiveSec=1min
+OnUnitActiveSec=1d
+
+[Install]
+WantedBy=timers.target

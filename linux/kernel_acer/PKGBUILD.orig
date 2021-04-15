@@ -1,0 +1,81 @@
+pkgname=linux
+pkgver=
+pkgrel=
+pkgdesc="The Linux kernel and modules"
+_Tag=v${pkgver%.*}-${pkgver##*.}
+_Src=archlinux-linux
+arch=(x86_64)
+license=(GPL2)
+provides=(VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE)
+replaces=(virtualbox-guest-modules-arch wireguard-arch)
+
+depends=(coreutils kmod initramfs)
+optdepends=('crda: to set the correct wireless channels of your country'
+            'linux-firmware: firmware images needed for some devices')
+makedepends=(
+    bc kmod libelf pahole cpio perl tar xz
+    xmlto python-sphinx python-sphinx_rtd_theme graphviz imagemagick
+    git
+)
+
+source=(
+    linux.pkg.tar.zst
+    config
+)
+sha256sums=('SKIP' 'SKIP')
+
+options=('!strip')
+
+export KBUILD_BUILD_HOST=archlinux
+export KBUILD_BUILD_USER=$pkgbase
+export KBUILD_BUILD_TIMESTAMP="$(date -Ru${SOURCE_DATE_EPOCH:+d @$SOURCE_DATE_EPOCH})"
+
+prepare() {
+    if [[ -d "$_Src" ]]
+    then
+        cd "$_Src"
+        git fetch --depth 1 origin "$_Tag"
+        git checkout -f FETCH_HEAD
+    else
+        git clone -b "$_Tag" --depth 1 'https://git.archlinux.org/linux.git' "$_Src"
+        cd "$_Src"
+    fi
+
+    echo "Setting version..."
+    scripts/setlocalversion --save-scmversion
+    echo "-$pkgrel" > localversion.10-pkgrel
+    echo "${pkgbase#linux}" > localversion.20-pkgname
+
+    # NOTE(nox): SA5-271 patch
+    sed -i 's/Switch SA5-271/SA5-271/' drivers/ata/ahci.c
+
+    echo "Setting config..."
+    cp ../config .config
+    make olddefconfig
+
+    make -s kernelrelease > version
+    echo "Prepared $pkgbase version $(<version)"
+}
+
+build() {
+    cd "$_Src"
+    make bzImage
+}
+
+package() {
+    cd "$_Src"
+    local KernVersion="$(<version)"
+    local VmlinuzPath="$pkgdir/usr/lib/modules/$KernVersion/vmlinuz"
+
+    echo "Copying original kernel..."
+    local OrigDir="$srcdir/usr"
+    cp -a "$OrigDir" "$pkgdir"
+
+    echo "Installing boot image..."
+    rm -f "$VmlinuzPath"
+    install -Dm644 "$(make -s image_name)" "$VmlinuzPath"
+}
+
+# Local Variables:
+# mode: sh
+# End:
