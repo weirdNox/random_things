@@ -2,6 +2,13 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1
 
+# ====================================================================================================
+# CONFIGURATION
+RepoFolder="/srv/http"
+RepoFile=repo.db.tar.zst
+
+# ====================================================================================================
+# BUILD
 rm -rf linux
 asp update linux >/dev/null 2>&1
 asp export linux >/dev/null
@@ -34,27 +41,32 @@ else
     echo "Downloading official Arch kernel package..."
     wget 'https://archlinux.org/packages/core/x86_64/linux/download/' -O linux.pkg.tar.zst >/dev/null 2>&1
 
+    # NOTE(nox): Check if the downloaded package is the latest one
+    pacman -Qip linux.pkg.tar.zst | grep -E 'Version.*:.*'"$ArchVer" || \
+        { echo "Downloaded package is not the latest!"; exit 1; }
+
     rm -f PKGBUILD
     cp PKGBUILD.orig PKGBUILD
     sed -i '/^pkgver=$/ s/$/'"$Arch_pkgver"'/' PKGBUILD
     sed -i '/^pkgrel=$/ s/$/'"$Arch_pkgrel"'/' PKGBUILD
 
-    PackageWildcard=linux-*.pkg.tar.zst
+    echo "Building package"
+    rm -rf src/usr # NOTE(nox): Remove old packages contents
+    MAKEFLAGS="-j$(nproc)" makepkg -s
 
-    if ! compgen -G $PackageWildcard
+    Package="linux-$ArchVer-x86_64.pkg.tar.zst"
+
+    if [[ -f "$Package" ]]
     then
-        echo "Building package"
+        echo "The new kernel has been successfully packaged in $Package"
+        chmod 644 "$Package"
 
-        MAKEFLAGS="-j$(nproc)" makepkg -s
+        echo "Adding $Package to the repository..."
+        sudo mv "$Package" "$RepoFolder/"
+        cd "$RepoFolder"
+        sudo repo-add --new --remove "$RepoFile" "$Package"
     else
-        echo "Package already exists, skipping..."
+        echo "Package $Package was _not_ created... :("
+        exit 1
     fi
-
-    chmod 644 $PackageWildcard
-
-    # echo "Adding the new kernel to the repository..."
-    # RepoFolder="/srv/http"
-    # RepoFile=repo.db.tar.zst
-    # sudo repo-add --new --remove "$RepoFolder/$RepoFile" $PackageWildcard
-    # sudo mv $PackageWildcard "$RepoFolder/"
 fi
