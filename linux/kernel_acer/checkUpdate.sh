@@ -39,7 +39,8 @@ else
     cp linux/config config
 
     echo "Downloading official Arch kernel package..."
-    wget 'https://archlinux.org/packages/core/x86_64/linux/download/' -O linux.pkg.tar.zst >/dev/null 2>&1
+    wget 'https://archlinux.org/packages/testing/x86_64/linux/download/'  -O linux.pkg.tar.zst >/dev/null 2>&1 || \
+        wget 'https://archlinux.org/packages/core/x86_64/linux/download/' -O linux.pkg.tar.zst >/dev/null 2>&1
 
     # NOTE(nox): Check if the downloaded package is the latest one
     pacman -Qip linux.pkg.tar.zst | grep -E 'Version.*:.*'"$ArchVer" || \
