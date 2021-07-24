@@ -37,7 +37,7 @@ prepare() {
         git fetch --depth 1 origin "$_Tag"
         git checkout -f FETCH_HEAD
     else
-        git clone -b "$_Tag" --depth 1 'https://git.archlinux.org/linux.git' "$_Src"
+        git clone -b "$_Tag" --depth 1 'https://github.com/archlinux/linux.git' "$_Src"
         cd "$_Src"
     fi
 
