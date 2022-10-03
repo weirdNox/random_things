@@ -5,7 +5,3 @@ This workaround is already present in the kernel.
 
 However, the kernel identifies the device by its DMI codes, which
 don't seem to be consistent throughout all units.
-
-This script recompiles only the latest, patched, bzImage (vmlinuz) and
-then packages it, together with the modules from the official Linux
-kernel Arch package.

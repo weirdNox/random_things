@@ -1,4 +1,6 @@
 # Kernel build unit, must be a USER service (~/.config/systemd/user/...)
+#
+# Place the files required for building the kernel in ~/build/kernel_acer/
 
 [Unit]
 Description=Acer kernel compilation
@@ -6,3 +8,7 @@ Description=Acer kernel compilation
 [Service]
 Type=simple
 ExecStart=%h/build/kernel_acer/checkUpdate.sh
+
+# Local Variables:
+# mode: conf
+# End:

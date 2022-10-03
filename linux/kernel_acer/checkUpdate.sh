@@ -16,45 +16,37 @@ asp export linux >/dev/null
 . linux/PKGBUILD
 Arch_pkgver=$pkgver
 Arch_pkgrel=$pkgrel
-ArchVer="$Arch_pkgver-$Arch_pkgrel"
 
 if [[ -f PKGBUILD ]]
 then
     . PKGBUILD
-    Local_pkgver=$pkgver
-    Local_pkgrel=$pkgrel
-    LocalVer="$Local_pkgver-$Local_pkgrel"
+    Acer_pkgver=$pkgver
+    Acer_pkgrel=$pkgrel
 else
-    Local_pkgver="NONE"
-    Local_pkgrel=
-    LocalVer="$Local_pkgver"
+    Acer_pkgver="NONE"
+    Acer_pkgrel="0"
 fi
 
-if [[ "$ArchVer" == "$LocalVer" ]]
-then
-    echo "Already have the latest version ($LocalVer)"
-else
-    echo "Rebuilding package ($LocalVer -> $ArchVer)"
+ArchVer="$Arch_pkgver-$Arch_pkgrel"
+AcerVer="$Acer_pkgver-$Acer_pkgrel"
 
+if [[ "$AcerVer" == "$ArchVer" ]]
+then
+    echo "Already have the latest version ($AcerVer)"
+else
+    echo "Rebuilding package ($AcerVer -> $ArchVer)"
+
+    # NOTE(nox): Fetch the kernel config from the Arch version
     cp linux/config config
 
-    echo "Downloading official Arch kernel package..."
-    wget 'https://archlinux.org/packages/testing/x86_64/linux/download/'  -O linux.pkg.tar.zst >/dev/null 2>&1 || \
-        wget 'https://archlinux.org/packages/core/x86_64/linux/download/' -O linux.pkg.tar.zst >/dev/null 2>&1
-
-    # NOTE(nox): Check if the downloaded package is the latest one
-    pacman -Qip linux.pkg.tar.zst | grep -E 'Version.*:.*'"$ArchVer" || \
-        { echo "Downloaded package is not the latest!"; exit 1; }
-
+    # NOTE(nox): Generate PKGBUILD for building the custom kernel
     rm -f PKGBUILD
-    cp PKGBUILD.orig PKGBUILD
+    cp PKGBUILD.acer PKGBUILD
     sed -i '/^pkgver=$/ s/$/'"$Arch_pkgver"'/' PKGBUILD
     sed -i '/^pkgrel=$/ s/$/'"$Arch_pkgrel"'/' PKGBUILD
 
-    echo "Building package"
-    rm -rf src/usr # NOTE(nox): Remove old packages contents
-    MAKEFLAGS="-j$(nproc)" makepkg -s
-
+    # NOTE(nox): Build and package the kernel
+    makepkg -s
     Package="linux-$ArchVer-x86_64.pkg.tar.zst"
 
     if [[ -f "$Package" ]]
@@ -66,6 +58,8 @@ else
         sudo mv "$Package" "$RepoFolder/"
         cd "$RepoFolder"
         sudo repo-add --new --remove "$RepoFile" "$Package"
+
+        echo "Done!"
     else
         echo "Package $Package was _not_ created... :("
         exit 1
