@@ -7,7 +7,7 @@ Description=Acer kernel compilation
 
 [Service]
 Type=simple
-ExecStart=%h/build/kernel_acer/checkUpdate.sh
+ExecStart=%h/build/kernel_acer/builder.sh
 
 # Local Variables:
 # mode: conf
