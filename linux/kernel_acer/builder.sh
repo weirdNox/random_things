@@ -17,7 +17,7 @@ config_file="builder.cfg"
 # ====================================================================================================
 # BUILD
 [[ ! -d linux ]] && pkgctl repo clone --protocol=https linux >/dev/null 2>&1
-(cd linux && git clean -fx && git pull) >/dev/null
+(cd linux && git clean -fxd && git pull) >/dev/null
 
 . linux/PKGBUILD
 arch_pkgver="$pkgver"
